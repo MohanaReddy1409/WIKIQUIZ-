@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+requests
+beautifulsoup4
+langchain
+langchain-google-genai
+python-dotenv
+psycopg2-binary
+json_repair
+sqlalchemy
