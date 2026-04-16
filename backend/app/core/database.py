@@ -1,18 +1,14 @@
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.ext.declarative import declarative_base
+from pymongo import MongoClient
 from app.core.config import settings
 
-# Use environment variable or default to localhost
 DATABASE_URL = settings.DATABASE_URL
 
-engine = create_engine(DATABASE_URL)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()
+# Parse the database name from the URL, or default to "wikiquiz"
+# Typically mongodb connections look like mongodb://host:port/database_name
+client = MongoClient(DATABASE_URL)
 
 def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+    # If a database name is explicitly given in the URI, use it. Otherwise use generic "wikiquiz"
+    db_name = client.get_database().name if client.get_database().name else "wikiquiz"
+    db = client[db_name]
+    yield db

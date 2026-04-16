@@ -19,16 +19,19 @@ llm = ChatGoogleGenerativeAI(
 
 def generate_with_retry(chain, inputs, max_retries=3):
     """
-    Helper function to invoke chain with retry logic for rate limits.
+    Helper function to invoke chain with retry logic for rate limits and network drops.
     """
     for attempt in range(max_retries):
         try:
             return chain.invoke(inputs)
         except Exception as e:
-            if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
+            error_str = str(e).lower()
+            # Catch rate limits and transient network disconnects
+            if "429" in error_str or "exhausted" in error_str or "httpx" in error_str or "disconnect" in error_str or "timeout" in error_str:
                 if attempt < max_retries - 1:
                     wait_time = (attempt + 1) * 5 # Increase wait time: 5s, 10s, 15s...
-                    print(f"Rate limit hit. Retrying in {wait_time}s...")
+                    # sys is needed for safe printing on Windows cp1252, but let's just use pass to avoid any print issues
+                    import time
                     time.sleep(wait_time)
                     continue
             raise e
@@ -92,8 +95,8 @@ def generate_quiz_from_text(title: str, text: str, url: str):
         chain = prompt | llm
         response = generate_with_retry(chain, {"title": title, "text": text, "url": url})
          
-        # Debug: Print raw response
-        print(f"DEBUG: LLM Response Content:\n{response.content}\n-------------------")
+        # Debug: Print raw response (Commented out to avoid UnicodeEncodeError in Windows terminal)
+        # print(f"DEBUG: LLM Response Content received (length: {len(response.content)})")
 
         # Clean up response content in case it has markdown code blocks
         content = response.content

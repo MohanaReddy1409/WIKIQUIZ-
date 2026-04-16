@@ -5,13 +5,10 @@ from fastapi.responses import JSONResponse
 from app.schemas.quiz_schemas import QuizRequest, QuizResponse
 from app.services.scraper import scrape_wikipedia
 from app.services.quiz_generator import generate_quiz_from_text
-from app.models import quiz_models
-from app.core.database import engine, get_db
+from app.core.database import get_db
 from app.core.config import settings
-from sqlalchemy.orm import Session
-
-# Create Tables
-quiz_models.Base.metadata.create_all(bind=engine)
+from pymongo.database import Database
+from datetime import datetime
 
 
 app = FastAPI(title="WikiQuiz AI Backend")
@@ -19,7 +16,7 @@ app = FastAPI(title="WikiQuiz AI Backend")
 # CORS setup to allow frontend to communicate
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # In production, replace with specific frontend origin
+    allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -30,7 +27,7 @@ def read_root():
     return {"status": "ok", "message": "WikiQuiz AI Backend is running"}
 
 @app.post("/generate-quiz", response_model=QuizResponse)
-def generate_quiz(request: QuizRequest, db: Session = Depends(get_db)):
+def generate_quiz(request: QuizRequest, db: Database = Depends(get_db)):
     if not request.url:
         raise HTTPException(status_code=400, detail="URL is required")
     
@@ -47,50 +44,55 @@ def generate_quiz(request: QuizRequest, db: Session = Depends(get_db)):
         quiz_data_json = generate_quiz_from_text(scraped_data['title'], scraped_data['content'], request.url)
         
         # 3. Store in Database
-        db_quiz = quiz_models.Quiz(
-            url=quiz_data_json['url'],
-            title=quiz_data_json['title'],
-            summary=quiz_data_json['summary'],
-            key_entities=quiz_data_json.get('key_entities'),
-            sections=quiz_data_json.get('sections'),
-            quiz_data=quiz_data_json.get('quiz'),
-            related_topics=quiz_data_json.get('related_topics')
-        )
-        db.add(db_quiz)
-        db.commit()
-        db.refresh(db_quiz)
+        quiz_doc = {
+            "url": quiz_data_json['url'],
+            "title": quiz_data_json['title'],
+            "summary": quiz_data_json['summary'],
+            "key_entities": quiz_data_json.get('key_entities'),
+            "sections": quiz_data_json.get('sections'),
+            "quiz_data": quiz_data_json.get('quiz'),
+            "related_topics": quiz_data_json.get('related_topics'),
+            "created_at": datetime.utcnow()
+        }
         
-        quiz_data_json['id'] = db_quiz.id
+        result = db["quizzes"].insert_one(quiz_doc)
+        
+        quiz_data_json['id'] = str(result.inserted_id)
         
         return quiz_data_json
     except Exception as e:
         import traceback
-        traceback.print_exc()
+        import sys
+        # Safely print traceback on Windows cp1252 consoles
+        sys.stderr.buffer.write(traceback.format_exc().encode('utf-8', 'replace'))
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/history")
-def get_history(db: Session = Depends(get_db)):
+def get_history(db: Database = Depends(get_db)):
     """
     Fetch all generated quizzes from history.
     """
-    quizzes = db.query(quiz_models.Quiz).order_by(quiz_models.Quiz.created_at.desc()).all()
+    quizzes = list(db["quizzes"].find().sort("created_at", -1))
     
     # Format for frontend
     history_list = []
     for q in quizzes:
+        # created_at is a datetime object in MongoDB
+        date_str = q.get("created_at").strftime("%Y-%m-%d") if q.get("created_at") else ""
+        
         history_list.append({
-            "id": q.id,
-            "title": q.title,
-            "url": q.url,
-            "date": q.created_at.strftime("%Y-%m-%d"),
-            "questions_count": len(q.quiz_data) if q.quiz_data else 0,
+            "id": str(q["_id"]),
+            "title": q.get("title", ""),
+            "url": q.get("url", ""),
+            "date": date_str,
+            "questions_count": len(q.get("quiz_data", [])) if q.get("quiz_data") else 0,
             
             # Include full details for the 'Details' view
-            "summary": q.summary,
-            "key_entities": q.key_entities,
-            "sections": q.sections,
-            "quiz": q.quiz_data,
-            "related_topics": q.related_topics
+            "summary": q.get("summary", ""),
+            "key_entities": q.get("key_entities", {}),
+            "sections": q.get("sections", []),
+            "quiz": q.get("quiz_data", []),
+            "related_topics": q.get("related_topics", [])
         })
     return history_list
 

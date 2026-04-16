@@ -1,11 +1,11 @@
 from pydantic import BaseModel
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Union
 
 class QuizRequest(BaseModel):
     url: str
 
 class Question(BaseModel):
-    id: Optional[int] = None 
+    id: Optional[Union[str, int]] = None 
     question: str
     options: List[str]
     answer: str
@@ -13,7 +13,7 @@ class Question(BaseModel):
     difficulty: str
 
 class QuizResponse(BaseModel):
-    id: Optional[int] = 1 
+    id: Optional[str] = None 
     url: str
     title: str
     summary: str
