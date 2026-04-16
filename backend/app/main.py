@@ -22,11 +22,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.get("/")
+@app.get("/api/")
 def read_root():
     return {"status": "ok", "message": "WikiQuiz AI Backend is running"}
 
-@app.post("/generate-quiz", response_model=QuizResponse)
+@app.post("/api/generate-quiz", response_model=QuizResponse)
 def generate_quiz(request: QuizRequest, db: Database = Depends(get_db)):
     if not request.url:
         raise HTTPException(status_code=400, detail="URL is required")
@@ -67,7 +67,7 @@ def generate_quiz(request: QuizRequest, db: Database = Depends(get_db)):
         sys.stderr.buffer.write(traceback.format_exc().encode('utf-8', 'replace'))
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/history")
+@app.get("/api/history")
 def get_history(db: Database = Depends(get_db)):
     """
     Fetch all generated quizzes from history.
